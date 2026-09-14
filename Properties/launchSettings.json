@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Spiro (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Spiro (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
