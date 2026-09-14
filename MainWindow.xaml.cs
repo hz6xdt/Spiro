@@ -29,23 +29,25 @@ public sealed partial class MainWindow : Window
     private const int toolWindowWidth = 1024;
     private const int toolWindowHeight = 800;
     
+
     private const double twoPi = 2.0 * Math.PI;
     private const double halfPi = Math.PI / 2.0;
+
 
     private readonly string settingsFilePath;
 
 
     // Cancellation token to stop the background loop when window closes
     private CancellationTokenSource? renderLoopCts;
+    private DispatcherQueue? uiDispatcher;
 
     // Ensure loop starts only once after the window is visible/activated
     private bool renderLoopStarted;
+    
+    
     private int frameIndex = 0;
-
-
     private bool curveAnimationStarted = false;
     private readonly Stopwatch curveStopwatch = new();
-
     private double completeTrace = twoPi;
 
 
@@ -64,7 +66,6 @@ public sealed partial class MainWindow : Window
 
     public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
     public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
-
     public float StrokeThickness { get; set; } = 3.0f;
 
 
@@ -72,10 +73,10 @@ public sealed partial class MainWindow : Window
 
 
     public int PauseBeforeErase { get; set; } = 8;
-    public int PauseBetweenRuns { get; set; } = 6;
+    public int PauseBetweenRuns { get; set; } = 4;
 
 
-    public double Increments { get; set; } = 120;
+    public double Increments { get; set; } = 120d;
 
     public double ARadius { get; set; } = 222d;
     public double BRadius { get; set; } = 60d;
@@ -100,8 +101,10 @@ public sealed partial class MainWindow : Window
 
 
 
+
         InitializeComponent();
         this.Activated += MainWindow_Activated;
+
 
 
 
@@ -140,7 +143,7 @@ public sealed partial class MainWindow : Window
         renderLoopCts = new CancellationTokenSource();
 
         // Capture the UI Dispatcher for marshaling Invalidate calls to the UI thread
-        DispatcherQueue? uiDispatcher = DispatcherQueue.GetForCurrentThread();
+        uiDispatcher = DispatcherQueue.GetForCurrentThread();
 
 
 
@@ -180,13 +183,15 @@ public sealed partial class MainWindow : Window
             centerX = width / 2f;
             centerY = height / 2f;
 
-            ARadius = (float)(Math.Min(width, height) * 0.35);
-            BRadius = (float)(Math.Min(width, height) * 0.05);
-            CDistance = (float)(Math.Min(width, height) * 0.1);
+            ARadius = Math.Min(width, height) * 0.35;
+            BRadius = Math.Min(width, height) * 0.05;
+            CDistance = Math.Min(width, height) * 0.1;
 
             completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
         }
     }
+
+
 
     private void Canvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
@@ -204,7 +209,7 @@ public sealed partial class MainWindow : Window
 
 
             // request another frame
-            DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => sender.Invalidate());
+            uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
 
@@ -238,7 +243,7 @@ public sealed partial class MainWindow : Window
 
             DrawPolygon(sender, ds, points);
 
-            DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => sender.Invalidate());
+            uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
         else if (curvePhase == CurvePhase.PausingBeforeErase)
@@ -252,7 +257,7 @@ public sealed partial class MainWindow : Window
             }
 
             curvePhase = CurvePhase.PausingBeforeDraw;
-            DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => sender.Invalidate());
+            uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
         //else if (curvePhase == CurvePhase.Erasing)
@@ -265,7 +270,7 @@ public sealed partial class MainWindow : Window
         //        // Just wait, no drawing
         //    }
 
-        //    DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => sender.Invalidate());
+        //    uiDispatcher?.TryEnqueue(() => sender.Invalidate());
 
         //    //if (fractionOfCurveToDraw >= 1.0)
         //    //{
@@ -274,7 +279,7 @@ public sealed partial class MainWindow : Window
         //    //}
         //    //else
         //    //{
-        //    //    DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => sender.Invalidate());
+        //    //    uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         //    //}
         //}
 
@@ -291,7 +296,7 @@ public sealed partial class MainWindow : Window
             frameIndex = 0;
             curvePhase = CurvePhase.Drawing;
 
-            DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => sender.Invalidate());
+            uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
 
