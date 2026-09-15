@@ -43,9 +43,10 @@ public sealed partial class MainWindow : Window
 
     // Ensure loop starts only once after the window is visible/activated
     private bool renderLoopStarted;
-    
-    
+
+
     private int frameIndex = 0;
+    private int curveIndex = 0;
     private bool curveAnimationStarted = false;
     private readonly Stopwatch curveStopwatch = new();
     private double completeTrace = twoPi;
@@ -55,14 +56,11 @@ public sealed partial class MainWindow : Window
     private CurvePhase curvePhase = CurvePhase.Drawing;
 
 
-    private float width = 1920f;
-    private float height = 1080f;
+    private double width = 1920f;
+    private double height = 1080f;
     private float centerX = 1920f / 2f;
     private float centerY = 1080f / 2f;
-
-
-
-
+    private double increments = 120d;
 
     public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
     public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
@@ -72,11 +70,23 @@ public sealed partial class MainWindow : Window
     public CanvasControl? CanvasControlInstance { get; private set; }
 
 
+    public List<Vector2[]> CurvePointsList { get; private set; } = new();
+    public int CurvesToDraw { get; set; } = 5;
+
     public int PauseBeforeErase { get; set; } = 8;
     public int PauseBetweenRuns { get; set; } = 4;
 
 
-    public double Increments { get; set; } = 120d;
+    public double Increments
+    {
+        get => increments;
+        set
+        {
+            increments = value;
+            DeltaT = Math.PI / increments;
+        }
+    }
+    public double DeltaT { get; set; } = Math.PI / 120d;
 
     public double ARadius { get; set; } = 222d;
     public double BRadius { get; set; } = 60d;
@@ -176,37 +186,19 @@ public sealed partial class MainWindow : Window
     {
         if (sender is CanvasControl canvasControl)
         {
-            // Prepare geometry
-            width = (float)canvasControl.ActualWidth;
-            height = (float)canvasControl.ActualHeight;
-
-            centerX = width / 2f;
-            centerY = height / 2f;
-
-            ARadius = Math.Min(width, height) * 0.35;
-            BRadius = Math.Min(width, height) * 0.05;
-            CDistance = Math.Min(width, height) * 0.1;
-
-            completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+            PrepareGeometry(canvasControl);
         }
     }
-
-
 
     private void Canvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
         CanvasDrawingSession ds = args.DrawingSession;
-
-        ds.Clear(BackgroundColor);
 
         // Initialize animation on first draw
         if (!curveAnimationStarted)
         {
             curveAnimationStarted = true;
             curvePhase = CurvePhase.Drawing;
-
-            frameIndex = 0;
-
 
             // request another frame
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
@@ -215,25 +207,31 @@ public sealed partial class MainWindow : Window
 
         if (curvePhase == CurvePhase.Drawing)
         {
+            ds.Clear(BackgroundColor);
+
+            foreach (var curvePoints in CurvePointsList)
+            {
+                DrawPolygon(sender, ds, curvePoints);
+            }
+
             frameIndex += 1; // increment frame index for each draw call
 
-            Vector2[] points = new Vector2[frameIndex +1];
+            Vector2[] points = new Vector2[frameIndex + 1];
+
             double t = 0d;
-            double tDelta = Math.PI / Increments;
 
             for (int i = 0; i < frameIndex; i++)
             {
                 float x = centerX + X(t, ARadius, BRadius, CDistance);
                 float y = centerY + Y(t, ARadius, BRadius, CDistance);
-                
+
                 points[i] = new Vector2(x, y);
-                
-                t += tDelta;
+
+                t += DeltaT;
             }
-            
+
             if (t >= completeTrace)
             {
-                curvePhase = CurvePhase.PausingBeforeErase;
                 points[frameIndex] = points[0];
             }
             else
@@ -241,7 +239,26 @@ public sealed partial class MainWindow : Window
                 points[frameIndex] = points[frameIndex - 1];
             }
 
+
             DrawPolygon(sender, ds, points);
+
+
+            if (t >= completeTrace)
+            {
+                curveIndex += 1;
+
+                if (curveIndex >= CurvesToDraw)
+                {
+                    curveIndex = 0;
+                    CurvePointsList.Clear();
+                    curvePhase = CurvePhase.PausingBeforeErase;
+                }
+                else
+                {
+                    CurvePointsList.Add(points);
+                    PrepareGeometry(sender);
+                }
+            }
 
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
@@ -256,32 +273,17 @@ public sealed partial class MainWindow : Window
                 // Just wait, no drawing
             }
 
-            curvePhase = CurvePhase.PausingBeforeDraw;
+            curvePhase = CurvePhase.Erasing;
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
-        //else if (curvePhase == CurvePhase.Erasing)
-        //{
-        //    curveStopwatch.Restart();
+        else if (curvePhase == CurvePhase.Erasing)
+        {
+            ds.Clear(BackgroundColor);
+            curvePhase = CurvePhase.PausingBeforeDraw;
 
-        //    //pause for a moment before erasing
-        //    while (curveStopwatch.Elapsed.TotalSeconds < PauseBetweenRuns)
-        //    {
-        //        // Just wait, no drawing
-        //    }
-
-        //    uiDispatcher?.TryEnqueue(() => sender.Invalidate());
-
-        //    //if (fractionOfCurveToDraw >= 1.0)
-        //    //{
-        //    //    curvePhase = CurvePhase.PausingBeforeDraw;
-        //    //    phaseStartTime = curveStopwatch.Elapsed.TotalSeconds;
-        //    //}
-        //    //else
-        //    //{
-        //    //    uiDispatcher?.TryEnqueue(() => sender.Invalidate());
-        //    //}
-        //}
+            uiDispatcher?.TryEnqueue(() => sender.Invalidate());
+        }
 
         else // PausingBeforeDraw
         {
@@ -298,9 +300,37 @@ public sealed partial class MainWindow : Window
 
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
-
-
     }
+
+
+
+
+
+
+    private void PrepareGeometry(CanvasControl canvasControl)
+    {
+        Random rand = new Random();
+        frameIndex = 0;
+
+        // Prepare geometry
+        width = canvasControl.ActualWidth;
+        height = canvasControl.ActualHeight;
+
+        centerX = (float)Math.Clamp(rand.NextDouble() * width, width * 0.1d, width * 0.9d);
+        centerY = (float)Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
+
+        completeTrace = 999d; // reset complete trace to a large value before generating new geometry
+
+        while (completeTrace > 120d)
+        {
+            ARadius = Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
+            BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
+            CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
+
+            completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+        }
+    }
+
 
     private void DrawPolygon(CanvasControl sender, CanvasDrawingSession ds, Vector2[] points)
     {
