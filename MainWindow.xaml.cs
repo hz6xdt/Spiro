@@ -60,8 +60,10 @@ public sealed partial class MainWindow : Window
     private double height = 1080f;
     private float centerX = 1920f / 2f;
     private float centerY = 1080f / 2f;
-    private double increments = 120d;
-    private double tDelta = Math.PI / 120d;
+    private double increments = 60d;
+    private double tDelta = Math.PI / 60d;
+    private double maxRadius = 0d;
+
 
 
     public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
@@ -73,7 +75,7 @@ public sealed partial class MainWindow : Window
 
 
     public List<Vector2[]> CurvePointsList { get; private set; } = new();
-    public int CurvesToDraw { get; set; } = 3;
+    public int CurvesToDraw { get; set; } = 1;
 
     public int PauseBeforeErase { get; set; } = 8;
     public int PauseBetweenRuns { get; set; } = 4;
@@ -215,10 +217,10 @@ public sealed partial class MainWindow : Window
                 DrawPolygon(sender, ds, curvePoints);
             }
 
+
             frameIndex += 1; // increment frame index for each draw call
 
             Vector2[] points = new Vector2[frameIndex + 1];
-
             double t = 0d;
 
             for (int i = 0; i < frameIndex; i++)
@@ -228,7 +230,7 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                if (i > 0 && Math.Abs(points[i].X - points[0].X) < .1)
+                if (t > tDelta && completeTrace / t > 3 && Math.Abs(points[i].X - points[0].X) < maxRadius * 0.001)
                 {
                     t = completeTrace; // stop drawing if we loop back to the start
                 }
@@ -332,14 +334,22 @@ public sealed partial class MainWindow : Window
 
         completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
 
+        maxRadius = ARadius - BRadius + CDistance;
+
+        ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
+        BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
+        CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
+
+        completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+
         //do
         //{
         //    ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
         //    BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
         //    CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
 
-        //    completeTrace = twoPi * BRadius / GCD(ARadius, BRadius);
-        //} while (completeTrace > 120d);
+        //    completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+        //} while (completeTrace > 300d);
     }
 
     // || centerX - ARadius + BRadius - CDistance < -20 || centerX + ARadius - BRadius + CDistance > width + 20
