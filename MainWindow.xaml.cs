@@ -61,17 +61,19 @@ public sealed partial class MainWindow : Window
     private float centerX = 1920f / 2f;
     private float centerY = 1080f / 2f;
     private double increments = 120d;
+    private double tDelta = Math.PI / 120d;
+
 
     public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
     public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
-    public float StrokeThickness { get; set; } = 3.0f;
+    public float StrokeThickness { get; set; } = 2.0f;
 
 
     public CanvasControl? CanvasControlInstance { get; private set; }
 
 
     public List<Vector2[]> CurvePointsList { get; private set; } = new();
-    public int CurvesToDraw { get; set; } = 5;
+    public int CurvesToDraw { get; set; } = 3;
 
     public int PauseBeforeErase { get; set; } = 8;
     public int PauseBetweenRuns { get; set; } = 4;
@@ -83,10 +85,9 @@ public sealed partial class MainWindow : Window
         set
         {
             increments = value;
-            DeltaT = Math.PI / increments;
+            tDelta = Math.PI / increments;
         }
     }
-    public double DeltaT { get; set; } = Math.PI / 120d;
 
     public double ARadius { get; set; } = 222d;
     public double BRadius { get; set; } = 60d;
@@ -227,7 +228,14 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                t += DeltaT;
+                if (i > 0 && Math.Abs(points[i].X - points[0].X) < .1)
+                {
+                    t = completeTrace; // stop drawing if we loop back to the start
+                }
+                else
+                {
+                    t += tDelta;
+                }
             }
 
             if (t >= completeTrace)
@@ -312,24 +320,31 @@ public sealed partial class MainWindow : Window
         Random rand = new Random();
         frameIndex = 0;
 
-        // Prepare geometry
         width = canvasControl.ActualWidth;
         height = canvasControl.ActualHeight;
 
         centerX = (float)Math.Clamp(rand.NextDouble() * width, width * 0.1d, width * 0.9d);
         centerY = (float)Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
 
-        completeTrace = 999d; // reset complete trace to a large value before generating new geometry
+        ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
+        BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
+        CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
 
-        while (completeTrace > 120d)
-        {
-            ARadius = Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
-            BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
-            CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
+        completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
 
-            completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
-        }
+        //do
+        //{
+        //    ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
+        //    BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
+        //    CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
+
+        //    completeTrace = twoPi * BRadius / GCD(ARadius, BRadius);
+        //} while (completeTrace > 120d);
     }
+
+    // || centerX - ARadius + BRadius - CDistance < -20 || centerX + ARadius - BRadius + CDistance > width + 20
+
+
 
 
     private void DrawPolygon(CanvasControl sender, CanvasDrawingSession ds, Vector2[] points)
