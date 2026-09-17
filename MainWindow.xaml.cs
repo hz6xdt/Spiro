@@ -26,6 +26,9 @@ public sealed partial class MainWindow : Window
     private readonly AppWindow? appWindow;
     private readonly Window toolWindow;
 
+    private readonly string settingsFilePath;
+
+
     private const int toolWindowWidth = 1024;
     private const int toolWindowHeight = 800;
     
@@ -33,8 +36,9 @@ public sealed partial class MainWindow : Window
     private const double twoPi = 2.0 * Math.PI;
     private const double halfPi = Math.PI / 2.0;
 
+    private const double increments = 100d;
+    private const double tDelta = Math.PI / increments;
 
-    private readonly string settingsFilePath;
 
 
     // Cancellation token to stop the background loop when window closes
@@ -60,36 +64,32 @@ public sealed partial class MainWindow : Window
     private double height = 1080f;
     private float centerX = 1920f / 2f;
     private float centerY = 1080f / 2f;
-    private double increments = 60d;
-    private double tDelta = Math.PI / 60d;
     private double maxRadius = 0d;
+    private readonly Random rand = new();
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
+    public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);    
 
-    public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
     public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
     public float StrokeThickness { get; set; } = 2.0f;
+    private readonly List<Color> curveColors = [];
 
 
     public CanvasControl? CanvasControlInstance { get; private set; }
 
 
-    public List<Vector2[]> CurvePointsList { get; private set; } = new();
-    public int CurvesToDraw { get; set; } = 1;
+    public List<Vector2[]> CurvePointsList { get; private set; } = [];
+    public int CurvesToDraw { get; set; } = 3;
 
     public int PauseBeforeErase { get; set; } = 8;
     public int PauseBetweenRuns { get; set; } = 4;
 
 
-    public double Increments
-    {
-        get => increments;
-        set
-        {
-            increments = value;
-            tDelta = Math.PI / increments;
-        }
-    }
 
     public double ARadius { get; set; } = 222d;
     public double BRadius { get; set; } = 60d;
@@ -189,6 +189,7 @@ public sealed partial class MainWindow : Window
     {
         if (sender is CanvasControl canvasControl)
         {
+            SelectRandomCurveColors();
             PrepareGeometry(canvasControl);
         }
     }
@@ -212,15 +213,15 @@ public sealed partial class MainWindow : Window
         {
             ds.Clear(BackgroundColor);
 
-            foreach (var curvePoints in CurvePointsList)
+            for (int i = 0; i < CurvePointsList.Count; i++)
             {
-                DrawPolygon(sender, ds, curvePoints);
+                DrawPolygon(sender, ds, CurvePointsList[i], GetCurveColor(i));
             }
 
 
             frameIndex += 1; // increment frame index for each draw call
 
-            Vector2[] points = new Vector2[frameIndex + 1];
+            Vector2[] points = new Vector2[frameIndex];
             double t = 0d;
 
             for (int i = 0; i < frameIndex; i++)
@@ -230,7 +231,9 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                if (t > tDelta && completeTrace / t > 3 && Math.Abs(points[i].X - points[0].X) < maxRadius * 0.001)
+                if (t > tDelta * halfPi && completeTrace / t > 3 
+                    && Math.Abs(points[i].X - points[0].X) < maxRadius * 0.001
+                    && Math.Abs(points[i].Y - points[0].Y) < maxRadius * 0.001)
                 {
                     t = completeTrace; // stop drawing if we loop back to the start
                 }
@@ -240,21 +243,15 @@ public sealed partial class MainWindow : Window
                 }
             }
 
-            if (t >= completeTrace)
-            {
-                points[frameIndex] = points[0];
-            }
-            else
-            {
-                points[frameIndex] = points[frameIndex - 1];
-            }
 
 
-            DrawPolygon(sender, ds, points);
+            DrawPolygon(sender, ds, points, GetCurveColor(curveIndex));
+
 
 
             if (t >= completeTrace)
             {
+                PrepareGeometry(sender);
                 curveIndex += 1;
 
                 if (curveIndex >= CurvesToDraw)
@@ -262,11 +259,11 @@ public sealed partial class MainWindow : Window
                     curveIndex = 0;
                     CurvePointsList.Clear();
                     curvePhase = CurvePhase.PausingBeforeErase;
+                    SelectRandomCurveColors();
                 }
                 else
                 {
                     CurvePointsList.Add(points);
-                    PrepareGeometry(sender);
                 }
             }
 
@@ -319,7 +316,6 @@ public sealed partial class MainWindow : Window
 
     private void PrepareGeometry(CanvasControl canvasControl)
     {
-        Random rand = new Random();
         frameIndex = 0;
 
         width = canvasControl.ActualWidth;
@@ -328,36 +324,106 @@ public sealed partial class MainWindow : Window
         centerX = (float)Math.Clamp(rand.NextDouble() * width, width * 0.1d, width * 0.9d);
         centerY = (float)Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
 
-        ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
-        BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
-        CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
-
-        completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+        ARadius = Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
+        BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
+        CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
 
         maxRadius = ARadius - BRadius + CDistance;
 
-        ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
-        BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
-        CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
-
         completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
-
-        //do
-        //{
-        //    ARadius = Math.Clamp(rand.Next() % (int)(height * 0.8) + (int)(height * 0.1), 1, (int)(height * 0.9));
-        //    BRadius = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
-        //    CDistance = Math.Clamp(rand.Next() % (int)(ARadius * 0.75) + (int)(ARadius * 0.05), 1, (int)(ARadius * 0.8));
-
-        //    completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
-        //} while (completeTrace > 300d);
     }
 
-    // || centerX - ARadius + BRadius - CDistance < -20 || centerX + ARadius - BRadius + CDistance > width + 20
+
+
+
+    private Color GetCurveColor(int index)
+    {
+        return index >= 0 && index < curveColors.Count ? curveColors[index] : CurveColor;
+    }
+
+    private void SelectRandomCurveColors()
+    {
+        do
+        {
+            BackgroundColor = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
+        }
+        while (RelativeLuminance(BackgroundColor) > 0.05 || RelativeLuminance(BackgroundColor) < 0.01);
+
+        curveColors.Clear();
+
+        for (int i = 0; i < Math.Max(0, CurvesToDraw); i++)
+        {
+            Color color;
+            do
+            {
+                color = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
+            }
+            while (ContrastRatio(BackgroundColor, color) < 3.0 ||
+                   IsGreenOrBlueGreen(color) ||
+                   curveColors.Contains(color));
+
+            curveColors.Add(color);
+        }
+    }
+
+    private static bool IsGreenOrBlueGreen(Color color)
+    {
+        int maximum = Math.Max(color.R, Math.Max(color.G, color.B));
+        int minimum = Math.Min(color.R, Math.Min(color.G, color.B));
+
+        if (maximum == minimum)
+        {
+            return false;
+        }
+
+        double hue;
+        if (maximum == color.R)
+        {
+            hue = 60.0 * (color.G - color.B) / (maximum - minimum);
+            if (hue < 0)
+            {
+                hue += 360.0;
+            }
+        }
+        else if (maximum == color.G)
+        {
+            hue = 60.0 * (color.B - color.R) / (maximum - minimum) + 120.0;
+        }
+        else
+        {
+            hue = 60.0 * (color.R - color.G) / (maximum - minimum) + 240.0;
+        }
+
+        return hue >= 80.0 && hue <= 200.0;
+    }
+
+    private static double ContrastRatio(Color background, Color foreground)
+    {
+        double backgroundLuminance = RelativeLuminance(background);
+        double foregroundLuminance = RelativeLuminance(foreground);
+        double lighter = Math.Max(backgroundLuminance, foregroundLuminance);
+        double darker = Math.Min(backgroundLuminance, foregroundLuminance);
+
+        return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    private static double RelativeLuminance(Color color)
+    {
+        static double Linearize(byte channel)
+        {
+            double value = channel / 255.0;
+            return value <= 0.03928 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+        }
+
+        return 0.2126 * Linearize(color.R) + 0.7152 * Linearize(color.G) + 0.0722 * Linearize(color.B);
+    }
 
 
 
 
-    private void DrawPolygon(CanvasControl sender, CanvasDrawingSession ds, Vector2[] points)
+
+
+    private void DrawPolygon(CanvasControl sender, CanvasDrawingSession ds, Vector2[] points, Color curveColor)
     {
         using var pathBuilder = new CanvasPathBuilder(sender);
         pathBuilder.BeginFigure(points[0]);
@@ -370,7 +436,7 @@ public sealed partial class MainWindow : Window
         pathBuilder.EndFigure(CanvasFigureLoop.Open);
 
         using var pathGeometry = CanvasGeometry.CreatePath(pathBuilder);
-        ds.DrawGeometry(pathGeometry, CurveColor, StrokeThickness);
+        ds.DrawGeometry(pathGeometry, curveColor, StrokeThickness);
     }
 
 
@@ -383,6 +449,9 @@ public sealed partial class MainWindow : Window
     {
         return (float)((a - b) * Math.Sin(t) - c * Math.Sin((a - b) / b * t));
     }
+
+
+
 
 
 
@@ -411,13 +480,7 @@ public sealed partial class MainWindow : Window
                 CurveColorArgb = ColorToUint(CurveColor)
             };
 
-            JsonSerializerOptions options = new()
-            {
-                WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-
-            string json = JsonSerializer.Serialize(s, options);
+            string json = JsonSerializer.Serialize(s, JsonOptions);
             File.WriteAllText(settingsFilePath, json);
         }
         catch
@@ -682,17 +745,17 @@ public sealed partial class MainWindow : Window
     }
 
     // P/Invoke helpers for style manipulation
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
-    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+    private static partial IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
-    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+    private static partial IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
-    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+    private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
 
-    [DllImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
-    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+    private static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private struct MonitorInfo
     {
@@ -745,19 +808,23 @@ public sealed partial class MainWindow : Window
         MDT_DEFAULT = MDT_EFFECTIVE_DPI
     }
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate bool MonitorEnumDelegate(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
 
-    [DllImport("user32.dll")]
-    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumDelegate lpfnEnum, IntPtr dwData);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumDelegate lpfnEnum, IntPtr dwData);
 
-    [DllImport("Shcore.dll")]
-    private static extern int GetDpiForMonitor(IntPtr hmonitor, MONITOR_DPI_TYPE dpiType, out uint dpiX, out uint dpiY);
+    [LibraryImport("Shcore.dll")]
+    private static partial int GetDpiForMonitor(IntPtr hmonitor, MONITOR_DPI_TYPE dpiType, out uint dpiX, out uint dpiY);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOZORDER = 0x0004;
