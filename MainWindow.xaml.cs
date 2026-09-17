@@ -321,16 +321,20 @@ public sealed partial class MainWindow : Window
         width = canvasControl.ActualWidth;
         height = canvasControl.ActualHeight;
 
-        centerX = (float)Math.Clamp(rand.NextDouble() * width, width * 0.1d, width * 0.9d);
-        centerY = (float)Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
+        do
+        {
+            centerX = (float)Math.Clamp(rand.NextDouble() * width, width * 0.1d, width * 0.9d);
+            centerY = (float)Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
 
-        ARadius = Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
-        BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
-        CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
+            ARadius = Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
+            BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
+            CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
 
-        maxRadius = ARadius - BRadius + CDistance;
+            maxRadius = ARadius - BRadius + CDistance;
 
-        completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+            completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
+        }
+        while (completeTrace > 2000);
     }
 
 
@@ -347,7 +351,7 @@ public sealed partial class MainWindow : Window
         {
             BackgroundColor = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
         }
-        while (RelativeLuminance(BackgroundColor) > 0.05 || RelativeLuminance(BackgroundColor) < 0.01);
+        while (RelativeLuminance(BackgroundColor) > 0.03 || RelativeLuminance(BackgroundColor) < 0.01);
 
         curveColors.Clear();
 
@@ -359,7 +363,7 @@ public sealed partial class MainWindow : Window
                 color = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
             }
             while (ContrastRatio(BackgroundColor, color) < 3.0 ||
-                   IsGreenOrBlueGreen(color) ||
+                   //IsGreenOrBlueGreen(color) ||
                    curveColors.Contains(color));
 
             curveColors.Add(color);
