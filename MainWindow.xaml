@@ -21,8 +21,10 @@
                               Draw="Canvas_Draw">
             <canvas:CanvasControl.ContextFlyout>
                 <MenuFlyout>
-                    <MenuFlyoutItem Text="Next"
+                    <MenuFlyoutItem Text="Next curve"
                                     Click="Next_Click" />
+                    <MenuFlyoutItem Text="Save drawing"
+                                    Click="Save_Click" />
                     <MenuFlyoutItem Text="Exit"
                                     Click="Exit_Click" />
                 </MenuFlyout>

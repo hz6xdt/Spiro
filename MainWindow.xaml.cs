@@ -15,8 +15,14 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
+using Windows.Graphics.Imaging;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using Windows.Storage.Streams;
 using VirtualKey = Windows.System.VirtualKey;
 using WinRT.Interop;
 
@@ -25,15 +31,16 @@ namespace Spiro;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly AppWindow? appWindow;
-    private readonly Window toolWindow;
-
     private readonly string settingsFilePath;
 
 
+    private readonly AppWindow? appWindow;
+    private readonly Window toolWindow;
+
     private const int toolWindowWidth = 1024;
     private const int toolWindowHeight = 800;
-    
+
+
 
     private const double twoPi = 2.0 * Math.PI;
     private const double increments = 100d;
@@ -49,12 +56,21 @@ public sealed partial class MainWindow : Window
     private bool renderLoopStarted;
 
 
+
     private int frameIndex = 0;
     private int curveIndex = 0;
     private bool curveAnimationStarted = false;
     private bool skipCurrentCurve = false;
-    private readonly Stopwatch curveStopwatch = new();
+    private bool screenPrintInProgress;
     private double completeTrace = twoPi;
+
+
+    private readonly Stopwatch curveStopwatch = new();
+    private bool pauseInvalidationScheduled;
+    private readonly List<Vector2[]> pausedCurvePoints = [];
+    private readonly List<Color> pausedCurveColors = [];
+    private Color pausedBackgroundColor;
+
 
 
     private enum CurvePhase { Drawing, PausingBeforeErase, Erasing, PausingBeforeDraw }
@@ -68,14 +84,8 @@ public sealed partial class MainWindow : Window
     private double maxRadius = 0d;
     private readonly Random rand = new();
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
 
     public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);    
-
     public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
     public float StrokeThickness { get; set; } = 2.0f;
     private readonly List<Color> curveColors = [];
@@ -95,6 +105,22 @@ public sealed partial class MainWindow : Window
     public double ARadius { get; set; } = 222d;
     public double BRadius { get; set; } = 60d;
     public double CDistance { get; set; } = 88d;
+
+
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+
+
+
+
+
+
+
 
 
 
@@ -181,12 +207,21 @@ public sealed partial class MainWindow : Window
                     await Task.Delay(TimeSpan.FromSeconds(PauseBetweenRuns), token);
                 }
             }
+
             catch (OperationCanceledException)
             {
                 // expected on cancellation
             }
         });
     }
+
+
+
+
+
+
+
+
 
 
     private void Canvas_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -197,6 +232,7 @@ public sealed partial class MainWindow : Window
             PrepareGeometry(canvasControl);
         }
     }
+
 
     private void Canvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
@@ -235,9 +271,9 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                if (t > tDelta * 10 && t / completeTrace > .333
-                    && Math.Abs(points[i].X - points[0].X) < maxRadius * 0.001
-                    && Math.Abs(points[i].Y - points[0].Y) < maxRadius * 0.001)
+                if (t > tDelta * 10 && t / completeTrace > .1
+                    && Math.Abs(points[i].X - points[0].X) < 2
+                    && Math.Abs(points[i].Y - points[0].Y) < 2)
                 {
                     t = completeTrace; // stop drawing if we loop back to the start
                 }
@@ -264,8 +300,18 @@ public sealed partial class MainWindow : Window
                 if (curveIndex >= CurvesToDraw)
                 {
                     curveIndex = 0;
+
+                    pausedBackgroundColor = BackgroundColor;
+                    pausedCurvePoints.Clear();
+                    pausedCurvePoints.AddRange(CurvePointsList);
+                    pausedCurvePoints.Add(points);
+                    pausedCurveColors.Clear();
+                    pausedCurveColors.AddRange(curveColors);
+                    
                     CurvePointsList.Clear();
                     curvePhase = CurvePhase.PausingBeforeErase;
+                    curveStopwatch.Restart();
+
                     SelectRandomCurveColors();
                 }
                 else
@@ -279,36 +325,43 @@ public sealed partial class MainWindow : Window
 
         else if (curvePhase == CurvePhase.PausingBeforeErase)
         {
-            curveStopwatch.Restart();
+            ds.Clear(pausedBackgroundColor);
 
-            //pause for a moment before erasing
-            while (curveStopwatch.Elapsed.TotalSeconds < PauseBeforeErase
-                    && !skipCurrentCurve)
+            for (int i = 0; i < pausedCurvePoints.Count; i++)
             {
-                // Just wait, no drawing
+                DrawPolygon(sender, ds, pausedCurvePoints[i], GetPausedCurveColor(i));
             }
 
-            skipCurrentCurve = false;
+            if (curveStopwatch.Elapsed.TotalSeconds < PauseBeforeErase)
+            {
+                SchedulePauseInvalidation(sender);
+                return;
+            }
+
             curvePhase = CurvePhase.Erasing;
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
         else if (curvePhase == CurvePhase.Erasing)
         {
-            ds.Clear(BackgroundColor);
+            ds.Clear(pausedBackgroundColor);
+
+            pausedCurvePoints.Clear();
+            pausedCurveColors.Clear();
+            
             curvePhase = CurvePhase.PausingBeforeDraw;
+            curveStopwatch.Restart();
 
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
 
         else // PausingBeforeDraw
         {
-            curveStopwatch.Restart();
-
-            //pause for a moment before erasing
-            while (curveStopwatch.Elapsed.TotalSeconds < PauseBetweenRuns)
+            ds.Clear(pausedBackgroundColor);
+            if (curveStopwatch.Elapsed.TotalSeconds < PauseBetweenRuns)
             {
-                // Just wait, no drawing
+                SchedulePauseInvalidation(sender);
+                return;
             }
 
             curvePhase = CurvePhase.Drawing;
@@ -316,6 +369,30 @@ public sealed partial class MainWindow : Window
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
     }
+
+    private void SchedulePauseInvalidation(CanvasControl sender)
+    {
+        if (pauseInvalidationScheduled)
+        {
+            return;
+        }
+
+        pauseInvalidationScheduled = true;
+
+        _ = InvalidateAfterPauseAsync(sender);
+    }
+
+    private async Task InvalidateAfterPauseAsync(CanvasControl sender)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(16));
+        pauseInvalidationScheduled = false;
+        uiDispatcher?.TryEnqueue(sender.Invalidate);
+    }
+
+
+
+
+
 
 
 
@@ -353,6 +430,11 @@ public sealed partial class MainWindow : Window
         return index >= 0 && index < curveColors.Count ? curveColors[index] : CurveColor;
     }
 
+    private Color GetPausedCurveColor(int index)
+    {
+        return index >= 0 && index < pausedCurveColors.Count ? pausedCurveColors[index] : CurveColor;
+    }
+
     private void SelectRandomCurveColors()
     {
         do
@@ -378,36 +460,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static bool IsGreenOrBlueGreen(Color color)
-    {
-        int maximum = Math.Max(color.R, Math.Max(color.G, color.B));
-        int minimum = Math.Min(color.R, Math.Min(color.G, color.B));
-
-        if (maximum == minimum)
-        {
-            return false;
-        }
-
-        double hue;
-        if (maximum == color.R)
-        {
-            hue = 60.0 * (color.G - color.B) / (maximum - minimum);
-            if (hue < 0)
-            {
-                hue += 360.0;
-            }
-        }
-        else if (maximum == color.G)
-        {
-            hue = 60.0 * (color.B - color.R) / (maximum - minimum) + 120.0;
-        }
-        else
-        {
-            hue = 60.0 * (color.R - color.G) / (maximum - minimum) + 240.0;
-        }
-
-        return hue >= 80.0 && hue <= 200.0;
-    }
 
     private static double ContrastRatio(Color background, Color foreground)
     {
@@ -429,6 +481,11 @@ public sealed partial class MainWindow : Window
 
         return 0.2126 * Linearize(color.R) + 0.7152 * Linearize(color.G) + 0.0722 * Linearize(color.B);
     }
+
+
+
+
+
 
 
 
@@ -466,16 +523,143 @@ public sealed partial class MainWindow : Window
 
 
 
-    private void Canvas_KeyDown(object sender, KeyRoutedEventArgs e)
+
+
+    private async void Canvas_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if ((curvePhase == CurvePhase.Drawing || curvePhase == CurvePhase.PausingBeforeErase)
-            && !e.KeyStatus.WasKeyDown
-            && (e.Key == VirtualKey.Right || e.Key == VirtualKey.N))
+            && !e.KeyStatus.WasKeyDown)
         {
-            skipCurrentCurve = true;
-            e.Handled = true;
+            if (e.Key == VirtualKey.Right || e.Key == VirtualKey.N)
+            {
+                e.Handled = true;
+                skipCurrentCurve = true;
+            }
+            else if (e.Key == VirtualKey.Down || e.Key == VirtualKey.S)
+            {
+                e.Handled = true;
+                await SaveScreenPrintAsync();
+            }
         }
     }
+
+
+
+
+
+
+
+
+    private sealed record ScreenPrint(byte[] Pixels, uint PixelWidth, uint PixelHeight);
+
+    private async Task<ScreenPrint> CaptureScreenPrintAsync()
+    {
+        RenderTargetBitmap renderTargetBitmap = new();
+        await renderTargetBitmap.RenderAsync(Canvas);
+
+        IBuffer pixels = await renderTargetBitmap.GetPixelsAsync();
+        byte[] pixelBytes = new byte[pixels.Length];
+        using (DataReader reader = DataReader.FromBuffer(pixels))
+        {
+            reader.ReadBytes(pixelBytes);
+        }
+
+        return new ScreenPrint(pixelBytes, (uint)renderTargetBitmap.PixelWidth, (uint)renderTargetBitmap.PixelHeight);
+    }
+
+    private async Task SaveScreenPrintAsync()
+    {
+        if (screenPrintInProgress)
+        {
+            return;
+        }
+
+        screenPrintInProgress = true;
+
+        try
+        {
+            ScreenPrint screenPrint = await CaptureScreenPrintAsync();
+            using InMemoryRandomAccessStream previewStream = await CreatePngStreamAsync(screenPrint);
+
+            BitmapImage thumbnail = new();
+            await thumbnail.SetSourceAsync(previewStream);
+
+            Image previewImage = new()
+            {
+                Source = thumbnail,
+                Width = 640,
+                Height = 360,
+                Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform
+            };
+
+            ContentDialog dialog = new()
+            {
+                Title = "Save drawing",
+                Content = previewImage,
+                PrimaryButtonText = "Save",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = Canvas.XamlRoot
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            FileSavePicker picker = new()
+            {
+                SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+                SuggestedFileName = $"spiro_{DateTime.Now:yyyyMMdd_HHmmss}"
+            };
+            picker.FileTypeChoices.Add("PNG image", [".png"]);
+            InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(this));
+
+            StorageFile? file = await picker.PickSaveFileAsync();
+            if (file is not null)
+            {
+                await SavePngAsync(file, screenPrint);
+            }
+        }
+        finally
+        {
+            screenPrintInProgress = false;
+        }
+    }
+
+    private static async Task<InMemoryRandomAccessStream> CreatePngStreamAsync(ScreenPrint screenPrint)
+    {
+        InMemoryRandomAccessStream stream = new();
+        BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+        encoder.SetPixelData(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Premultiplied,
+            screenPrint.PixelWidth,
+            screenPrint.PixelHeight,
+            96,
+            96,
+            screenPrint.Pixels);
+        await encoder.FlushAsync();
+        stream.Seek(0);
+        return stream;
+    }
+
+    private static async Task SavePngAsync(StorageFile file, ScreenPrint screenPrint)
+    {
+        using IRandomAccessStream stream = await file.OpenAsync(FileAccessMode.ReadWrite);
+        BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+        encoder.SetPixelData(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Premultiplied,
+            screenPrint.PixelWidth,
+            screenPrint.PixelHeight,
+            96,
+            96,
+            screenPrint.Pixels);
+        await encoder.FlushAsync();
+    }
+
+
 
 
 
@@ -559,6 +743,11 @@ public sealed partial class MainWindow : Window
     private void Next_Click(object sender, RoutedEventArgs e)
     {
         skipCurrentCurve = true;
+    }
+
+    private async void Save_Click(object sender, RoutedEventArgs e)
+    {
+        await SaveScreenPrintAsync();
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)
