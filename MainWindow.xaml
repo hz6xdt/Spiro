@@ -16,10 +16,13 @@
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <canvas:CanvasControl x:Name="Canvas"
+                              IsTabStop="True"
                               SizeChanged="Canvas_SizeChanged"
                               Draw="Canvas_Draw">
             <canvas:CanvasControl.ContextFlyout>
                 <MenuFlyout>
+                    <MenuFlyoutItem Text="Next"
+                                    Click="Next_Click" />
                     <MenuFlyoutItem Text="Exit"
                                     Click="Exit_Click" />
                 </MenuFlyout>

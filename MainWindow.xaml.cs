@@ -15,7 +15,9 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
 using Windows.UI;
+using VirtualKey = Windows.System.VirtualKey;
 using WinRT.Interop;
 
 
@@ -34,8 +36,6 @@ public sealed partial class MainWindow : Window
     
 
     private const double twoPi = 2.0 * Math.PI;
-    private const double halfPi = Math.PI / 2.0;
-
     private const double increments = 100d;
     private const double tDelta = Math.PI / increments;
 
@@ -52,6 +52,7 @@ public sealed partial class MainWindow : Window
     private int frameIndex = 0;
     private int curveIndex = 0;
     private bool curveAnimationStarted = false;
+    private bool skipCurrentCurve = false;
     private readonly Stopwatch curveStopwatch = new();
     private double completeTrace = twoPi;
 
@@ -87,7 +88,7 @@ public sealed partial class MainWindow : Window
     public int CurvesToDraw { get; set; } = 3;
 
     public int PauseBeforeErase { get; set; } = 8;
-    public int PauseBetweenRuns { get; set; } = 4;
+    public int PauseBetweenRuns { get; set; } = 1;
 
 
 
@@ -117,6 +118,7 @@ public sealed partial class MainWindow : Window
 
         InitializeComponent();
         this.Activated += MainWindow_Activated;
+        Canvas.KeyDown += Canvas_KeyDown;
 
 
 
@@ -145,6 +147,7 @@ public sealed partial class MainWindow : Window
         //DisableWindowResize(toolWindow);
     }
 
+
     
     private void MainWindow_Activated(object? sender, WindowActivatedEventArgs args)
     {
@@ -157,6 +160,7 @@ public sealed partial class MainWindow : Window
 
         // Capture the UI Dispatcher for marshaling Invalidate calls to the UI thread
         uiDispatcher = DispatcherQueue.GetForCurrentThread();
+        Canvas.Focus(FocusState.Programmatic);
 
 
 
@@ -231,7 +235,7 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                if (t > tDelta * halfPi && completeTrace / t > 3 
+                if (t > tDelta * 10 && t / completeTrace > .333
                     && Math.Abs(points[i].X - points[0].X) < maxRadius * 0.001
                     && Math.Abs(points[i].Y - points[0].Y) < maxRadius * 0.001)
                 {
@@ -249,9 +253,12 @@ public sealed partial class MainWindow : Window
 
 
 
-            if (t >= completeTrace)
+            if (t >= completeTrace || skipCurrentCurve)
             {
+                skipCurrentCurve = false;
+
                 PrepareGeometry(sender);
+
                 curveIndex += 1;
 
                 if (curveIndex >= CurvesToDraw)
@@ -275,11 +282,13 @@ public sealed partial class MainWindow : Window
             curveStopwatch.Restart();
 
             //pause for a moment before erasing
-            while (curveStopwatch.Elapsed.TotalSeconds < PauseBeforeErase)
+            while (curveStopwatch.Elapsed.TotalSeconds < PauseBeforeErase
+                    && !skipCurrentCurve)
             {
                 // Just wait, no drawing
             }
 
+            skipCurrentCurve = false;
             curvePhase = CurvePhase.Erasing;
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
         }
@@ -302,7 +311,6 @@ public sealed partial class MainWindow : Window
                 // Just wait, no drawing
             }
 
-            frameIndex = 0;
             curvePhase = CurvePhase.Drawing;
 
             uiDispatcher?.TryEnqueue(() => sender.Invalidate());
@@ -458,6 +466,24 @@ public sealed partial class MainWindow : Window
 
 
 
+    private void Canvas_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if ((curvePhase == CurvePhase.Drawing || curvePhase == CurvePhase.PausingBeforeErase)
+            && !e.KeyStatus.WasKeyDown
+            && (e.Key == VirtualKey.Right || e.Key == VirtualKey.N))
+        {
+            skipCurrentCurve = true;
+            e.Handled = true;
+        }
+    }
+
+
+
+
+
+
+
+
 
 
 
@@ -528,6 +554,11 @@ public sealed partial class MainWindow : Window
         IntPtr hWnd = WindowNative.GetWindowHandle(window);
         WindowId myWndId = Win32Interop.GetWindowIdFromWindow(hWnd);
         return AppWindow.GetFromWindowId(myWndId);
+    }
+
+    private void Next_Click(object sender, RoutedEventArgs e)
+    {
+        skipCurrentCurve = true;
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e)
