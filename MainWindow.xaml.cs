@@ -31,10 +31,10 @@ namespace Spiro;
 
 public sealed partial class MainWindow : Window
 {
+    private static readonly List<MainWindow> monitorWindows = [];
     private readonly string settingsFilePath;
 
 
-    private readonly AppWindow? appWindow;
     private readonly Window toolWindow;
 
     private const int toolWindowWidth = 1024;
@@ -124,7 +124,11 @@ public sealed partial class MainWindow : Window
 
 
 
-    public MainWindow()
+    public MainWindow() : this(-1, true)
+    {
+    }
+
+    private MainWindow(int monitorIndex, bool createWindowOnEachMonitor)
     {
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string dir = Path.Combine(appData, "Points");
@@ -151,9 +155,30 @@ public sealed partial class MainWindow : Window
 
         CanvasControlInstance = this.Canvas;
 
-        MoveWindowToMonitor(this, 1);
-        appWindow = GetAppWindowForWindow(this);
+        int monitorCount = createWindowOnEachMonitor ? GetMonitorRects().Count : 0;
+        if (monitorIndex >= 0)
+        {
+            MoveWindowToMonitor(this, monitorIndex);
+        }
+        else if (monitorCount > 0)
+        {
+            MoveWindowToMonitor(this, 0);
+        }
+
+        AppWindow? appWindow = GetAppWindowForWindow(this);
         appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+
+        if (createWindowOnEachMonitor)
+        {
+            monitorWindows.Add(this);
+
+            for (int index = 1; index < monitorCount; index++)
+            {
+                MainWindow monitorWindow = new(index, false);
+                monitorWindows.Add(monitorWindow);
+                monitorWindow.Activate();
+            }
+        }
 
 
 
@@ -271,9 +296,13 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                if (t > tDelta * 10 && t / completeTrace > .1
+                if (t > tDelta * 10
+                    &&
+                    (points[i].X == points[0].X && points[i].Y == points[0].Y
+                    ||
+                    (t / completeTrace > .1
                     && Math.Abs(points[i].X - points[0].X) < 2
-                    && Math.Abs(points[i].Y - points[0].Y) < 2)
+                    && Math.Abs(points[i].Y - points[0].Y) < 2)))
                 {
                     t = completeTrace; // stop drawing if we loop back to the start
                 }
@@ -849,6 +878,7 @@ public sealed partial class MainWindow : Window
     private static List<RECT> GetMonitorRects()
     {
         List<RECT> list = [];
+
         bool callback(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
         {
             // Copy the monitor rect passed from EnumDisplayMonitors
@@ -858,6 +888,7 @@ public sealed partial class MainWindow : Window
 
         // EnumDisplayMonitors marshals callback as MonitorEnumProc
         EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
+        
         return list;
     }
 
