@@ -102,7 +102,7 @@ public sealed partial class MainWindow : Window
     private readonly Random rand = new();
 
 
-    public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);    
+    public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
     public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
     public float StrokeThickness { get; set; } = 2.0f;
     private readonly List<Color> curveColors = [];
@@ -313,13 +313,13 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
-                if (t > tDelta * 10
+                if (t > tDelta * curveClosureInitialSteps
                     &&
                     (points[i].X == points[0].X && points[i].Y == points[0].Y
                     ||
-                    (t / completeTrace > .1
-                    && Math.Abs(points[i].X - points[0].X) < 2
-                    && Math.Abs(points[i].Y - points[0].Y) < 2)))
+                    (t / completeTrace > curveClosureStartFraction
+                    && Math.Abs(points[i].X - points[0].X) < curveClosureTolerance
+                    && Math.Abs(points[i].Y - points[0].Y) < curveClosureTolerance)))
                 {
                     t = completeTrace; // stop drawing if we loop back to the start
                 }
@@ -430,7 +430,7 @@ public sealed partial class MainWindow : Window
 
     private async Task InvalidateAfterPauseAsync(CanvasControl sender)
     {
-                    await Task.Delay(TimeSpan.FromMilliseconds(frameIntervalMilliseconds));
+        await Task.Delay(TimeSpan.FromMilliseconds(frameIntervalMilliseconds));
         pauseInvalidationScheduled = false;
         uiDispatcher?.TryEnqueue(sender.Invalidate);
     }
@@ -485,7 +485,7 @@ public sealed partial class MainWindow : Window
         {
             BackgroundColor = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
         }
-        while (RelativeLuminance(BackgroundColor) > maximumBackgroundLuminance || RelativeLuminance(BackgroundColor) < minimumBackgroundLuminance   );
+        while (RelativeLuminance(BackgroundColor) > maximumBackgroundLuminance || RelativeLuminance(BackgroundColor) < minimumBackgroundLuminance);
 
         curveColors.Clear();
 
@@ -722,12 +722,10 @@ public sealed partial class MainWindow : Window
 
     private sealed class AppSettings
     {
-        public uint? BackgroundColorArgb { get; set; }
-        public uint? CurveColorArgb { get; set; }
-        public float? StrokeThickness { get; set; }
-        public int? CurvesToDraw { get; set; }
-        public int? PauseBeforeErase { get; set; }
-        public int? PauseBetweenRuns { get; set; }
+        public float StrokeThickness { get; set; } = 2.0f;
+        public int CurvesToDraw { get; set; } = 3;
+        public int PauseBeforeErase { get; set; } = 8;
+        public int PauseBetweenRuns { get; set; } = 1;
     }
 
 
@@ -737,8 +735,6 @@ public sealed partial class MainWindow : Window
         {
             AppSettings s = new()
             {
-                BackgroundColorArgb = ColorToUint(BackgroundColor),
-                CurveColorArgb = ColorToUint(CurveColor),
                 StrokeThickness = StrokeThickness,
                 CurvesToDraw = CurvesToDraw,
                 PauseBeforeErase = PauseBeforeErase,
@@ -764,35 +760,10 @@ public sealed partial class MainWindow : Window
                 AppSettings? s = JsonSerializer.Deserialize<AppSettings>(json);
                 if (s != null)
                 {
-                    if (s.BackgroundColorArgb.HasValue)
-                    {
-                        BackgroundColor = UintToColor(s.BackgroundColorArgb.Value);
-                    }
-
-                    if (s.CurveColorArgb.HasValue)
-                    {
-                        CurveColor = UintToColor(s.CurveColorArgb.Value);
-                    }
-
-                    if (s.StrokeThickness.HasValue)
-                    {
-                        StrokeThickness = s.StrokeThickness.Value;
-                    }
-
-                    if (s.CurvesToDraw.HasValue)
-                    {
-                        CurvesToDraw = s.CurvesToDraw.Value;
-                    }
-
-                    if (s.PauseBeforeErase.HasValue)
-                    {
-                        PauseBeforeErase = s.PauseBeforeErase.Value;
-                    }
-
-                    if (s.PauseBetweenRuns.HasValue)
-                    {
-                        PauseBetweenRuns = s.PauseBetweenRuns.Value;
-                    }
+                    StrokeThickness = Math.Clamp(s.StrokeThickness, 1.0f, 20.0f);
+                    CurvesToDraw = (int)Math.Clamp(s.CurvesToDraw, 1.0d, 10.0d);
+                    PauseBeforeErase = Math.Clamp(s.PauseBeforeErase, 0, 60);
+                    PauseBetweenRuns = Math.Clamp(s.PauseBetweenRuns, 0, 10);
                 }
             }
         }
@@ -807,6 +778,9 @@ public sealed partial class MainWindow : Window
     private static uint ColorToUint(Color c) => (uint)((c.A << 24) | (c.R << 16) | (c.G << 8) | c.B);
 
     private static Color UintToColor(uint v) => Color.FromArgb((byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v);
+
+
+
 
 
 
