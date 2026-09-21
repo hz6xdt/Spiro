@@ -45,6 +45,23 @@ public sealed partial class MainWindow : Window
     private const double twoPi = 2.0 * Math.PI;
     private const double increments = 100d;
     private const double tDelta = Math.PI / increments;
+    private const int fallbackWindowWidth = 800;
+    private const int fallbackWindowHeight = 600;
+
+    private const int frameIntervalMilliseconds = 16;
+    private const double centerMinimumRatio = 0.1d;
+    private const double centerMaximumRatio = 0.9d;
+    private const double secondaryRadiusMinimumRatio = 0.05d;
+    private const double secondaryRadiusMaximumRatio = 0.8d;
+    private const double curveClosureStartFraction = 0.1d;
+    private const double curveClosureTolerance = 2d;
+    private const int curveClosureInitialSteps = 10;
+    private const double maximumCompleteTrace = 2000d;
+    private const double minimumBackgroundLuminance = 0.01d;
+    private const double maximumBackgroundLuminance = 0.03d;
+    private const double minimumContrastRatio = 3d;
+    private const double previewWidth = 640d;
+    private const double previewHeight = 360d;
 
 
 
@@ -81,7 +98,7 @@ public sealed partial class MainWindow : Window
     private double height = 1080f;
     private float centerX = 1920f / 2f;
     private float centerY = 1080f / 2f;
-    private double maxRadius = 0d;
+
     private readonly Random rand = new();
 
 
@@ -165,7 +182,7 @@ public sealed partial class MainWindow : Window
             MoveWindowToMonitor(this, 0);
         }
 
-        AppWindow? appWindow = GetAppWindowForWindow(this);
+        AppWindow appWindow = GetAppWindowForWindow(this);
         appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
 
         if (createWindowOnEachMonitor)
@@ -211,7 +228,6 @@ public sealed partial class MainWindow : Window
 
         // Capture the UI Dispatcher for marshaling Invalidate calls to the UI thread
         uiDispatcher = DispatcherQueue.GetForCurrentThread();
-        Canvas.Focus(FocusState.Programmatic);
 
 
 
@@ -255,6 +271,7 @@ public sealed partial class MainWindow : Window
         {
             SelectRandomCurveColors();
             PrepareGeometry(canvasControl);
+            Canvas.Focus(FocusState.Programmatic);
         }
     }
 
@@ -413,7 +430,7 @@ public sealed partial class MainWindow : Window
 
     private async Task InvalidateAfterPauseAsync(CanvasControl sender)
     {
-        await Task.Delay(TimeSpan.FromMilliseconds(16));
+                    await Task.Delay(TimeSpan.FromMilliseconds(frameIntervalMilliseconds));
         pauseInvalidationScheduled = false;
         uiDispatcher?.TryEnqueue(sender.Invalidate);
     }
@@ -437,18 +454,16 @@ public sealed partial class MainWindow : Window
 
         do
         {
-            centerX = (float)Math.Clamp(rand.NextDouble() * width, width * 0.1d, width * 0.9d);
-            centerY = (float)Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
+            centerX = (float)Math.Clamp(rand.NextDouble() * width, width * centerMinimumRatio, width * centerMaximumRatio);
+            centerY = (float)Math.Clamp(rand.NextDouble() * height, height * centerMinimumRatio, height * centerMaximumRatio);
 
-            ARadius = Math.Clamp(rand.NextDouble() * height, height * 0.1d, height * 0.9d);
-            BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
-            CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * 0.05d, ARadius * 0.8d);
-
-            maxRadius = ARadius - BRadius + CDistance;
+            ARadius = Math.Clamp(rand.NextDouble() * height, height * centerMinimumRatio, height * centerMaximumRatio);
+            BRadius = Math.Clamp(rand.NextDouble() * ARadius, ARadius * secondaryRadiusMinimumRatio, ARadius * secondaryRadiusMaximumRatio);
+            CDistance = Math.Clamp(rand.NextDouble() * ARadius, ARadius * secondaryRadiusMinimumRatio, ARadius * secondaryRadiusMaximumRatio);
 
             completeTrace = twoPi * BRadius / GCD((int)ARadius, (int)BRadius);
         }
-        while (completeTrace > 2000);
+        while (completeTrace > maximumCompleteTrace);
     }
 
 
@@ -470,7 +485,7 @@ public sealed partial class MainWindow : Window
         {
             BackgroundColor = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
         }
-        while (RelativeLuminance(BackgroundColor) > 0.03 || RelativeLuminance(BackgroundColor) < 0.01);
+        while (RelativeLuminance(BackgroundColor) > maximumBackgroundLuminance || RelativeLuminance(BackgroundColor) < minimumBackgroundLuminance   );
 
         curveColors.Clear();
 
@@ -481,7 +496,7 @@ public sealed partial class MainWindow : Window
             {
                 color = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
             }
-            while (ContrastRatio(BackgroundColor, color) < 3.0 ||
+            while (ContrastRatio(BackgroundColor, color) < minimumContrastRatio ||
                    //IsGreenOrBlueGreen(color) ||
                    curveColors.Contains(color));
 
@@ -616,8 +631,8 @@ public sealed partial class MainWindow : Window
             Image previewImage = new()
             {
                 Source = thumbnail,
-                Width = 640,
-                Height = 360,
+                Width = previewWidth,
+                Height = previewHeight,
                 Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform
             };
 
@@ -707,9 +722,12 @@ public sealed partial class MainWindow : Window
 
     private sealed class AppSettings
     {
-        public uint BackgroundColorArgb { get; set; }
-        public uint CurveColorArgb { get; set; }
-        public float StrokeThickness { get; set; }
+        public uint? BackgroundColorArgb { get; set; }
+        public uint? CurveColorArgb { get; set; }
+        public float? StrokeThickness { get; set; }
+        public int? CurvesToDraw { get; set; }
+        public int? PauseBeforeErase { get; set; }
+        public int? PauseBetweenRuns { get; set; }
     }
 
 
@@ -720,7 +738,11 @@ public sealed partial class MainWindow : Window
             AppSettings s = new()
             {
                 BackgroundColorArgb = ColorToUint(BackgroundColor),
-                CurveColorArgb = ColorToUint(CurveColor)
+                CurveColorArgb = ColorToUint(CurveColor),
+                StrokeThickness = StrokeThickness,
+                CurvesToDraw = CurvesToDraw,
+                PauseBeforeErase = PauseBeforeErase,
+                PauseBetweenRuns = PauseBetweenRuns
             };
 
             string json = JsonSerializer.Serialize(s, JsonOptions);
@@ -742,8 +764,35 @@ public sealed partial class MainWindow : Window
                 AppSettings? s = JsonSerializer.Deserialize<AppSettings>(json);
                 if (s != null)
                 {
-                    BackgroundColor = UintToColor(s.BackgroundColorArgb);
-                    CurveColor = UintToColor(s.CurveColorArgb);
+                    if (s.BackgroundColorArgb.HasValue)
+                    {
+                        BackgroundColor = UintToColor(s.BackgroundColorArgb.Value);
+                    }
+
+                    if (s.CurveColorArgb.HasValue)
+                    {
+                        CurveColor = UintToColor(s.CurveColorArgb.Value);
+                    }
+
+                    if (s.StrokeThickness.HasValue)
+                    {
+                        StrokeThickness = s.StrokeThickness.Value;
+                    }
+
+                    if (s.CurvesToDraw.HasValue)
+                    {
+                        CurvesToDraw = s.CurvesToDraw.Value;
+                    }
+
+                    if (s.PauseBeforeErase.HasValue)
+                    {
+                        PauseBeforeErase = s.PauseBeforeErase.Value;
+                    }
+
+                    if (s.PauseBetweenRuns.HasValue)
+                    {
+                        PauseBetweenRuns = s.PauseBetweenRuns.Value;
+                    }
                 }
             }
         }
@@ -937,8 +986,8 @@ public sealed partial class MainWindow : Window
         else
         {
             // fallback default in pixels
-            winWidth = Math.Min(800, targetWidth);
-            winHeight = Math.Min(600, targetHeight);
+            winWidth = Math.Min(fallbackWindowWidth, targetWidth);
+            winHeight = Math.Min(fallbackWindowHeight, targetHeight);
         }
 
         // Clamp to monitor size
