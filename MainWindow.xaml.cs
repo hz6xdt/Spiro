@@ -43,8 +43,6 @@ public sealed partial class MainWindow : Window
 
 
     private const double twoPi = 2.0 * Math.PI;
-    private const double increments = 100d;
-    private const double tDelta = Math.PI / increments;
     private const int fallbackWindowWidth = 800;
     private const int fallbackWindowHeight = 600;
 
@@ -79,6 +77,8 @@ public sealed partial class MainWindow : Window
     private bool curveAnimationStarted = false;
     private bool skipCurrentCurve = false;
     private bool screenPrintInProgress;
+    private double tDelta = Math.PI / 100d;
+
     private double completeTrace = twoPi;
 
 
@@ -102,26 +102,38 @@ public sealed partial class MainWindow : Window
     private readonly Random rand = new();
 
 
-    public Color BackgroundColor { get; set; } = Color.FromArgb(255, 28, 81, 34);
-    public Color CurveColor { get; set; } = Color.FromArgb(255, 255, 252, 228);
-    public float StrokeThickness { get; set; } = 2.0f;
+    private Color BackgroundColor = Color.FromArgb(255, 28, 81, 34);
+    private Color CurveColor = Color.FromArgb(255, 255, 252, 228);
     private readonly List<Color> curveColors = [];
+
+    private double ARadius = 222d;
+    private double BRadius = 60d;
+    private double CDistance = 88d;
+    private double increments = 100d;
+
+
 
 
     public CanvasControl? CanvasControlInstance { get; private set; }
 
 
+
     public List<Vector2[]> CurvePointsList { get; private set; } = [];
     public int CurvesToDraw { get; set; } = 3;
-
+    public float StrokeThickness { get; set; } = 2.0f;
     public int PauseBeforeErase { get; set; } = 8;
     public int PauseBetweenRuns { get; set; } = 1;
+    public double Increments
+    {
+        get => increments;
+        set
+        {
+            increments = value;
+            tDelta = Math.PI / increments;
+        }
+    }
 
 
-
-    public double ARadius { get; set; } = 222d;
-    public double BRadius { get; set; } = 60d;
-    public double CDistance { get; set; } = 88d;
 
 
 
@@ -148,7 +160,7 @@ public sealed partial class MainWindow : Window
     private MainWindow(int monitorIndex, bool createWindowOnEachMonitor)
     {
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string dir = Path.Combine(appData, "Points");
+        string dir = Path.Combine(appData, "Spiro");
         if (!Directory.Exists(dir))
         {
             try
@@ -726,6 +738,7 @@ public sealed partial class MainWindow : Window
         public int CurvesToDraw { get; set; } = 3;
         public int PauseBeforeErase { get; set; } = 8;
         public int PauseBetweenRuns { get; set; } = 1;
+        public double Increments { get; set; } = 100d;
     }
 
 
@@ -738,15 +751,16 @@ public sealed partial class MainWindow : Window
                 StrokeThickness = StrokeThickness,
                 CurvesToDraw = CurvesToDraw,
                 PauseBeforeErase = PauseBeforeErase,
-                PauseBetweenRuns = PauseBetweenRuns
+                PauseBetweenRuns = PauseBetweenRuns,
+                Increments = Increments
             };
 
             string json = JsonSerializer.Serialize(s, JsonOptions);
             File.WriteAllText(settingsFilePath, json);
         }
-        catch
+        catch (Exception x)
         {
-            // ignore save errors
+            Debug.WriteLine($"Error saving settings: {x.ToString()}");
         }
     }
 
@@ -764,12 +778,13 @@ public sealed partial class MainWindow : Window
                     CurvesToDraw = (int)Math.Clamp(s.CurvesToDraw, 1.0d, 10.0d);
                     PauseBeforeErase = Math.Clamp(s.PauseBeforeErase, 0, 60);
                     PauseBetweenRuns = Math.Clamp(s.PauseBetweenRuns, 0, 10);
+                    Increments = Math.Clamp(s.Increments, 20d, 500d);
                 }
             }
         }
-        catch
+        catch (Exception x)
         {
-            // ignore load errors
+            Debug.WriteLine($"Error loading settings: {x.ToString()}");
         }
     }
 
