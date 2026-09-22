@@ -52,7 +52,7 @@ public sealed partial class MainWindow : Window
     private const double secondaryRadiusMinimumRatio = 0.05d;
     private const double secondaryRadiusMaximumRatio = 0.8d;
     private const double curveClosureStartFraction = 0.1d;
-    private const double curveClosureTolerance = 2d;
+    private const double curveClosureTolerance = 1.1d;
     private const int curveClosureInitialSteps = 10;
     private const double maximumCompleteTrace = 2000d;
     private const double minimumBackgroundLuminance = 0.01d;
@@ -267,6 +267,18 @@ public sealed partial class MainWindow : Window
             }
         });
     }
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -548,6 +560,13 @@ public sealed partial class MainWindow : Window
 
 
 
+
+
+
+
+
+
+
     private void DrawPolygon(CanvasControl sender, CanvasDrawingSession ds, Vector2[] points, Color curveColor)
     {
         using var pathBuilder = new CanvasPathBuilder(sender);
@@ -567,13 +586,20 @@ public sealed partial class MainWindow : Window
 
     private static float X(double t, double a, double b, double c)
     {
-        return (float)((a - b) * Math.Cos(t) + c * Math.Cos((a - b) / b * t));
+        return (float)((a - b) * Math.Sin(t) - c * Math.Sin((a - b) / b * t));
     }
 
     private static float Y(double t, double a, double b, double c)
     {
-        return (float)((a - b) * Math.Sin(t) - c * Math.Sin((a - b) / b * t));
+        return (float)-((a - b) * Math.Cos(t) + c * Math.Cos((a - b) / b * t));
     }
+
+
+
+
+
+
+
 
 
 
@@ -583,18 +609,25 @@ public sealed partial class MainWindow : Window
 
     private async void Canvas_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if ((curvePhase == CurvePhase.Drawing || curvePhase == CurvePhase.PausingBeforeErase)
-            && !e.KeyStatus.WasKeyDown)
+        if (!e.KeyStatus.WasKeyDown)
         {
-            if (e.Key == VirtualKey.Right || e.Key == VirtualKey.N)
+            if (curvePhase == CurvePhase.Drawing || curvePhase == CurvePhase.PausingBeforeErase)
             {
-                e.Handled = true;
-                skipCurrentCurve = true;
+                if (e.Key == VirtualKey.Right || e.Key == VirtualKey.N)
+                {
+                    e.Handled = true;
+                    skipCurrentCurve = true;
+                }
+                else if (e.Key == VirtualKey.Down || e.Key == VirtualKey.S)
+                {
+                    e.Handled = true;
+                    await SaveScreenPrintAsync();
+                }
             }
-            else if (e.Key == VirtualKey.Down || e.Key == VirtualKey.S)
+            if (e.Key == VirtualKey.X)
             {
                 e.Handled = true;
-                await SaveScreenPrintAsync();
+                this.Close();
             }
         }
     }
@@ -760,7 +793,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception x)
         {
-            Debug.WriteLine($"Error saving settings: {x.ToString()}");
+            Debug.WriteLine($"Error saving settings: {x}");
         }
     }
 
@@ -784,7 +817,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception x)
         {
-            Debug.WriteLine($"Error loading settings: {x.ToString()}");
+            Debug.WriteLine($"Error loading settings: {x}");
         }
     }
 
@@ -819,7 +852,6 @@ public sealed partial class MainWindow : Window
 
     private void Exit_Click(object sender, RoutedEventArgs e)
     {
-        //toolWindow.Close();
         this.Close();
     }
 
