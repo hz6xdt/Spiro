@@ -231,6 +231,8 @@ public sealed partial class MainWindow : Window
     
     private void MainWindow_Activated(object? sender, WindowActivatedEventArgs args)
     {
+        // TODO: Keep the render task in a field, capture the cancellation token locally,
+        // and await it during shutdown so task exceptions and cancellation are observable.
         // Ensure activation logic runs only once (existing field used safely).
         if (renderLoopStarted)
             return;
@@ -291,6 +293,7 @@ public sealed partial class MainWindow : Window
 
     private void Canvas_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        // TODO: Ignore zero-sized or otherwise invalid resize events before generating geometry.
         if (sender is CanvasControl canvasControl)
         {
             SelectRandomCurveColors();
@@ -302,6 +305,10 @@ public sealed partial class MainWindow : Window
 
     private void Canvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
+        // TODO: Reuse or incrementally update the current point buffer instead of allocating
+        // and recomputing the entire curve on every draw callback.
+        // TODO: Use one frame-scheduling mechanism; repeatedly enqueueing invalidations from
+        // the draw callback can build up redundant UI work.
         CanvasDrawingSession ds = args.DrawingSession;
 
         // Initialize animation on first draw
@@ -454,6 +461,8 @@ public sealed partial class MainWindow : Window
 
     private async Task InvalidateAfterPauseAsync(CanvasControl sender)
     {
+        // TODO: Pass the window cancellation token and use try/finally so the scheduled flag
+        // is reset when the window closes or the delay fails.
         await Task.Delay(TimeSpan.FromMilliseconds(frameIntervalMilliseconds));
         pauseInvalidationScheduled = false;
         uiDispatcher?.TryEnqueue(sender.Invalidate);
@@ -471,6 +480,8 @@ public sealed partial class MainWindow : Window
 
     private void PrepareGeometry(CanvasControl canvasControl)
     {
+        // TODO: Validate canvas dimensions and bound the retry loop; invalid dimensions or
+        // unlucky random values must not cause division by zero or an unbounded UI-thread loop.
         frameIndex = 0;
 
         width = canvasControl.ActualWidth;
@@ -505,6 +516,8 @@ public sealed partial class MainWindow : Window
 
     private void SelectRandomCurveColors()
     {
+        // TODO: Bound both random-selection loops and provide a deterministic fallback when
+        // the luminance, contrast, or uniqueness constraints cannot be satisfied.
         do
         {
             BackgroundColor = Color.FromArgb(255, (byte)rand.Next(256), (byte)rand.Next(256), (byte)rand.Next(256));
@@ -569,6 +582,8 @@ public sealed partial class MainWindow : Window
 
     private void DrawPolygon(CanvasControl sender, CanvasDrawingSession ds, Vector2[] points, Color curveColor)
     {
+        // TODO: Return or throw a clear argument exception for an empty point array before
+        // indexing points[0]; make this method's precondition explicit.
         using var pathBuilder = new CanvasPathBuilder(sender);
         pathBuilder.BeginFigure(points[0]);
 
@@ -609,6 +624,8 @@ public sealed partial class MainWindow : Window
 
     private async void Canvas_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // TODO: Catch and report failures from the awaited save operation at this async-void
+        // event boundary so picker, capture, and file errors do not become unhandled exceptions.
         if (!e.KeyStatus.WasKeyDown)
         {
             if (curvePhase == CurvePhase.Drawing || curvePhase == CurvePhase.PausingBeforeErase)
@@ -658,6 +675,8 @@ public sealed partial class MainWindow : Window
 
     private async Task SaveScreenPrintAsync()
     {
+        // TODO: Validate XamlRoot and window lifetime before creating the dialog, and provide
+        // user-visible handling for capture, picker, and file-access failures.
         if (screenPrintInProgress)
         {
             return;
@@ -718,6 +737,8 @@ public sealed partial class MainWindow : Window
 
     private static async Task<InMemoryRandomAccessStream> CreatePngStreamAsync(ScreenPrint screenPrint)
     {
+        // TODO: Dispose the stream if encoder creation or flushing fails before ownership is
+        // transferred to the caller.
         InMemoryRandomAccessStream stream = new();
         BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
         encoder.SetPixelData(
@@ -777,6 +798,8 @@ public sealed partial class MainWindow : Window
 
     public void SaveSettings()
     {
+        // TODO: Write settings atomically through a temporary file and replace operation so a
+        // process or storage failure cannot leave the persisted JSON truncated.
         try
         {
             AppSettings s = new()
@@ -799,6 +822,8 @@ public sealed partial class MainWindow : Window
 
     private void LoadSettings()
     {
+        // TODO: Distinguish malformed settings from storage-access failures and log enough
+        // context to diagnose either case without silently treating all exceptions alike.
         try
         {
             if (File.Exists(settingsFilePath))
@@ -835,6 +860,8 @@ public sealed partial class MainWindow : Window
 
     private static AppWindow GetAppWindowForWindow(Window window)
     {
+        // TODO: Validate the native handle and report WinUI/native interop failures instead of
+        // allowing an invalid WindowId to fail later at the AppWindow call site.
         IntPtr hWnd = WindowNative.GetWindowHandle(window);
         WindowId myWndId = Win32Interop.GetWindowIdFromWindow(hWnd);
         return AppWindow.GetFromWindowId(myWndId);
@@ -847,6 +874,8 @@ public sealed partial class MainWindow : Window
 
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
+        // TODO: Handle expected save failures at this async-void event boundary and show an
+        // appropriate error to the user.
         await SaveScreenPrintAsync();
     }
 
@@ -859,6 +888,8 @@ public sealed partial class MainWindow : Window
 
     private void Window_Closed(object sender, WindowEventArgs args)
     {
+        // TODO: Await render-loop shutdown before disposing its CTS, cancel pending pause tasks,
+        // remove this window from monitorWindows, and prevent queued callbacks after disposal.
         // Save settings on exit
         SaveSettings();
 
@@ -882,6 +913,11 @@ public sealed partial class MainWindow : Window
 
     private static double GCD(int a, int b)
     {
+        if (b == 0)
+        {
+            return 1;
+        }
+
         a = Math.Abs(a);
         b = Math.Abs(b);
 
@@ -924,6 +960,8 @@ public sealed partial class MainWindow : Window
 
     private static void MoveWindowToMonitor(Window window, int monitorIndex)
     {
+        // TODO: Check the native window handle and SetWindowPos result, reporting Win32 errors
+        // instead of silently ignoring placement failures.
         if (window is null)
         {
             return;
@@ -947,6 +985,8 @@ public sealed partial class MainWindow : Window
 
     private static List<RECT> GetMonitorRects()
     {
+        // TODO: Check EnumDisplayMonitors' return value and expose/log native enumeration
+        // failures instead of returning an indistinguishable empty list.
         List<RECT> list = [];
 
         bool callback(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
@@ -969,6 +1009,8 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private static void MoveWindowToMonitorCentered(Window window, int monitorIndex, int desiredWidthDips = 0, int desiredHeightDips = 0)
     {
+        // TODO: Check native handle, GetWindowRect, and SetWindowPos failures and preserve
+        // the relevant Win32 error codes for diagnostics.
         if (window is null)
         {
             return;
@@ -1030,6 +1072,8 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private static void DisableWindowResize(Window window)
     {
+        // TODO: Check GetWindowLong*/SetWindowLong* and SetWindowPos results; a failed style
+        // update currently leaves the window partially configured without any diagnostics.
         if (window is null)
         {
             return;
@@ -1092,6 +1136,8 @@ public sealed partial class MainWindow : Window
 
     private static List<MonitorInfo> GetMonitorInfos()
     {
+        // TODO: Check EnumDisplayMonitors and log the native error; keep the 96-DPI fallback
+        // explicit while avoiding a blanket catch that hides unrelated failures.
         List<MonitorInfo> list = [];
         bool callback(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData)
         {
