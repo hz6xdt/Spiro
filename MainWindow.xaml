@@ -25,6 +25,8 @@
                                     Click="Next_Click" />
                     <MenuFlyoutItem Text="Save drawing"
                                     Click="Save_Click" />
+                    <MenuFlyoutItem Text="Tools"
+                                    Click="Tools_Click" />
                     <MenuFlyoutItem Text="Exit"
                                     Click="Exit_Click" />
                 </MenuFlyout>

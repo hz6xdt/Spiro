@@ -25,5 +25,11 @@ public sealed partial class ToolWindow : Window
     public ToolWindow(MainWindow mainWindow)
     {
         InitializeComponent();
+        RootElement.DataContext = new ToolsViewModel(mainWindow);
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 }

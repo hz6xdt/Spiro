@@ -13,7 +13,40 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <ScrollViewer x:Name="RootElement" Padding="24">
+        <StackPanel Spacing="16" MaxWidth="300">
+            <TextBlock Text="Spiro tools" Style="{StaticResource TitleTextBlockStyle}" />
 
-    </Grid>
+            <NumberBox Header="Stroke thickness"
+                       Minimum="1"
+                       Maximum="20"
+                       SmallChange="1"
+                       Value="{Binding StrokeThickness, Mode=TwoWay}" />
+            <NumberBox Header="Curves to draw"
+                       Minimum="1"
+                       Maximum="10"
+                       SmallChange="1"
+                       Value="{Binding CurvesToDraw, Mode=TwoWay}" />
+            <NumberBox Header="Pause before erase"
+                       Minimum="0"
+                       Maximum="60"
+                       SmallChange="1"
+                       Value="{Binding PauseBeforeErase, Mode=TwoWay}" />
+            <NumberBox Header="Pause between runs (seconds)"
+                       Minimum="0"
+                       Maximum="10"
+                       SmallChange="1"
+                       Value="{Binding PauseBetweenRuns, Mode=TwoWay}" />
+            <NumberBox Header="Increments (speed)"
+                       Minimum="20"
+                       Maximum="500"
+                       SmallChange="10"
+                       Value="{Binding Increments, Mode=TwoWay}" />
+
+            <Button Content="Close"
+                    Margin="0,28,0,0"
+                    HorizontalAlignment="Right"
+                    Click="CloseButton_Click" />
+        </StackPanel>
+    </ScrollViewer>
 </Window>

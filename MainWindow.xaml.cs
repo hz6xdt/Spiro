@@ -35,10 +35,11 @@ public sealed partial class MainWindow : Window
     private readonly string settingsFilePath;
 
 
-    private readonly Window toolWindow;
+    private ToolWindow? toolWindow;
+    private readonly int monitorIndex;
 
-    private const int toolWindowWidth = 1024;
-    private const int toolWindowHeight = 800;
+    private const int toolWindowWidth = 640;
+    private const int toolWindowHeight = 640;
 
 
 
@@ -113,7 +114,6 @@ public sealed partial class MainWindow : Window
 
 
 
-
     public CanvasControl? CanvasControlInstance { get; private set; }
 
 
@@ -159,6 +159,8 @@ public sealed partial class MainWindow : Window
 
     private MainWindow(int monitorIndex, bool createWindowOnEachMonitor)
     {
+        this.monitorIndex = monitorIndex < 0 ? 0 : monitorIndex;
+
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string dir = Path.Combine(appData, "Spiro");
         if (!Directory.Exists(dir))
@@ -208,23 +210,6 @@ public sealed partial class MainWindow : Window
                 monitorWindow.Activate();
             }
         }
-
-
-
-
-        //toolWindow = new ToolWindow(this);
-        //MoveWindowToMonitorCentered(toolWindow, 0, desiredWidthDips: toolWindowWidth, desiredHeightDips: toolWindowHeight);
-
-        //AppWindow toolAppWindow = GetAppWindowForWindow(toolWindow);
-        //if (toolAppWindow.Presenter is OverlappedPresenter overlappedPresenter)
-        //{
-        //    overlappedPresenter.IsAlwaysOnTop = true;
-        //}
-
-        //toolWindow.Activate();
-
-        //// Disable resizing for the tool window so it can't be resized or maximized
-        //DisableWindowResize(toolWindow);
     }
 
 
@@ -478,6 +463,10 @@ public sealed partial class MainWindow : Window
 
 
 
+
+
+
+
     private void PrepareGeometry(CanvasControl canvasControl)
     {
         // TODO: Validate canvas dimensions and bound the retry loop; invalid dimensions or
@@ -562,6 +551,9 @@ public sealed partial class MainWindow : Window
 
         return 0.2126 * Linearize(color.R) + 0.7152 * Linearize(color.G) + 0.0722 * Linearize(color.B);
     }
+
+
+
 
 
 
@@ -858,6 +850,10 @@ public sealed partial class MainWindow : Window
 
 
 
+
+
+
+
     private static AppWindow GetAppWindowForWindow(Window window)
     {
         // TODO: Validate the native handle and report WinUI/native interop failures instead of
@@ -884,6 +880,34 @@ public sealed partial class MainWindow : Window
         this.Close();
     }
 
+    private void Tools_Click(object sender, RoutedEventArgs e)
+    {
+        if (toolWindow != null)
+        {
+            toolWindow.Activate();
+            return;
+        }
+
+        toolWindow = new ToolWindow(this);
+        toolWindow.Closed += ToolWindow_Closed;
+
+        MoveWindowToMonitorCentered(toolWindow, monitorIndex, toolWindowWidth, toolWindowHeight);
+
+        AppWindow toolAppWindow = GetAppWindowForWindow(toolWindow);
+        if (toolAppWindow.Presenter is OverlappedPresenter overlappedPresenter)
+        {
+            overlappedPresenter.IsAlwaysOnTop = true;
+        }
+
+        toolWindow.Activate();
+        DisableWindowResize(toolWindow);
+    }
+
+    private void ToolWindow_Closed(object sender, WindowEventArgs args)
+    {
+        toolWindow = null;
+    }
+
 
 
     private void Window_Closed(object sender, WindowEventArgs args)
@@ -892,6 +916,9 @@ public sealed partial class MainWindow : Window
         // remove this window from monitorWindows, and prevent queued callbacks after disposal.
         // Save settings on exit
         SaveSettings();
+
+        toolWindow?.Close();
+        toolWindow = null;
 
         // Cancel the background loop and clean up the CanvasControl
         if (renderLoopCts != null && !renderLoopCts.IsCancellationRequested)
@@ -904,6 +931,9 @@ public sealed partial class MainWindow : Window
         this.CanvasControlInstance?.RemoveFromVisualTree();
         this.CanvasControlInstance = null;
     }
+
+
+
 
 
 
@@ -1114,16 +1144,16 @@ public sealed partial class MainWindow : Window
     }
 
     // P/Invoke helpers for style manipulation
-    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static partial IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
 
-    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static partial IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
-    [LibraryImport("user32.dll", EntryPoint = "GetWindowLong", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
 
-    [LibraryImport("user32.dll", EntryPoint = "SetWindowLong", SetLastError = true)]
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
     private static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private struct MonitorInfo
