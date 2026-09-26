@@ -53,6 +53,7 @@ public sealed partial class MainWindow : Window
     private const double secondaryRadiusMinimumRatio = 0.05d;
     private const double secondaryRadiusMaximumRatio = 0.8d;
     private const double curveClosureStartFraction = 0.1d;
+    private const double curveClosureEndFraction = 0.88d;
     private const double curveClosureTolerance = 1.1d;
     private const int curveClosureInitialSteps = 10;
     private const double maximumCompleteTrace = 2000d;
@@ -329,13 +330,20 @@ public sealed partial class MainWindow : Window
 
                 points[i] = new Vector2(x, y);
 
+                if (i > curveClosureInitialSteps
+                 && points[i].X == points[1].X     && points[i].Y == points[1].Y
+                 && points[i - 1].X == points[0].X && points[i - 1].Y == points[0].Y)
+                {
+                    t = completeTrace; // stop drawing if we loop back to the start
+                }
+
                 if (t > tDelta * curveClosureInitialSteps
+                    && t / completeTrace > curveClosureStartFraction
+                    && t / completeTrace < curveClosureEndFraction
                     &&
-                    (points[i].X == points[0].X && points[i].Y == points[0].Y
-                    ||
-                    (t / completeTrace > curveClosureStartFraction
-                    && Math.Abs(points[i].X - points[0].X) < curveClosureTolerance
-                    && Math.Abs(points[i].Y - points[0].Y) < curveClosureTolerance)))
+                        (points[i].X == points[0].X && points[i].Y == points[0].Y
+                        ||
+                        (Math.Abs(points[i].X - points[0].X) < curveClosureTolerance && Math.Abs(points[i].Y - points[0].Y) < curveClosureTolerance)))
                 {
                     t = completeTrace; // stop drawing if we loop back to the start
                 }
