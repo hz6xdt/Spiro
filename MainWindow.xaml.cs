@@ -414,7 +414,7 @@ public sealed partial class MainWindow : Window
 
         else if (curvePhase == CurvePhase.Erasing)
         {
-            ds.Clear(pausedBackgroundColor);
+            ds.Clear(BackgroundColor);
 
             pausedCurvePoints.Clear();
             pausedCurveColors.Clear();
@@ -427,7 +427,7 @@ public sealed partial class MainWindow : Window
 
         else // PausingBeforeDraw
         {
-            ds.Clear(pausedBackgroundColor);
+            ds.Clear(BackgroundColor);
             if (curveStopwatch.Elapsed.TotalSeconds < PauseBetweenRuns)
             {
                 SchedulePauseInvalidation(sender);
